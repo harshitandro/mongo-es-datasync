@@ -1,0 +1,12 @@
+{
+  "Application": {
+    "LastTimestampToResume": 0
+  },
+  "Monogo": {
+    "QueryRouterAddr": "192.168.5.242:27007",
+    "DbsToMonitor": ["test"]
+  },
+  "Elasticsearch": {
+    "ElasticUrl": "192.168.5.197:9200"
+  }
+}
