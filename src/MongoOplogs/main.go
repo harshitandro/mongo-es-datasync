@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -124,27 +125,33 @@ func createShardClient(replicasetName string, shardAddr string) (*mongo.Client, 
 	return client, nil
 }
 
-func tailOplogForShard(shardAddr string, client *mongo.Client, bufferChannel *chan string) error {
+func tailOplogForShard(shardAddr string, client *mongo.Client, bufferChannel *chan map[string]interface{}) error {
 	ctx := context.Background()
 	defer client.Disconnect(ctx)
 
-	logger.Debugln("Started tailing oplogs for ", shardAddr)
+	logger.WithField("mongoShard", shardAddr).Debugln("Started tailing oplogs")
 	database := client.Database("local").Collection("oplog.rs")
 	opts := options.FindOptions{}
-	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gt", bsonx.Timestamp(1558976336, 0)}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(dbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts.SetCursorType(options.TailableAwait))
+	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gt", bsonx.Timestamp(timestampToResume, 0)}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(dbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts.SetCursorType(options.TailableAwait))
 	defer cursor.Close(ctx)
 	if err != nil {
-		logger.Errorln("Error while tailing oplog : ", shardAddr, " : ", err)
+		logger.WithField("mongoShard", shardAddr).Errorln("Error while tailing oplog : ", err)
 		return err
 	}
 
 	for cursor.Next(ctx) {
-		*bufferChannel <- cursor.Current.String()
+		var m map[string]interface{}
+		err = cursor.Decode(&m)
+		if err == nil {
+			*bufferChannel <- m
+		} else {
+			logger.WithField("mongoShard", shardAddr).Errorln("Error while unmarshling bson raw to map : ", cursor.Current.String())
+		}
 	}
 	return nil
 }
 
-func TailOplogs(bufferChannel *chan string) error {
+func TailOplogs(bufferChannel *chan map[string]interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for replicasetName, shardAddr := range shardsAddr {
@@ -157,4 +164,19 @@ func TailOplogs(bufferChannel *chan string) error {
 		go tailOplogForShard(shardAddr, client, bufferChannel)
 	}
 	return nil
+}
+
+func GetRecordById(db string, collection string, objectIDHex string) map[string]interface{} {
+	collectionObj := mongoClient.Database(db).Collection(collection)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	objectID, err := primitive.ObjectIDFromHex(objectIDHex)
+	if err != nil {
+		return nil
+	}
+	result := collectionObj.FindOne(ctx, bson.D{{"_id", objectID}})
+	var doc map[string]interface{}
+	result.Decode(&doc)
+	return doc
 }

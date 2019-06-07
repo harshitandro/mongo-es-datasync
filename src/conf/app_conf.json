@@ -3,10 +3,10 @@
     "LastTimestampToResume": 0
   },
   "Monogo": {
-    "QueryRouterAddr": "192.168.5.242:27007",
-    "DbsToMonitor": ["test"]
+    "QueryRouterAddr": "127.0.0.1:27007",
+    "DbsToMonitor": ["k2db"]
   },
   "Elasticsearch": {
-    "ElasticUrl": "192.168.5.197:9200"
+    "ElasticUrl": "127.0.0.1:9200"
   }
 }

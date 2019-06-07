@@ -1,7 +1,9 @@
-package Mongo_ES_Data_Sync
+package main
 
 import (
 	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
+	"github.com/harshitandro/mongo-es-datasync/src/DataTransformationLayer"
+	"github.com/harshitandro/mongo-es-datasync/src/ElasticDataLayer"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
 	"github.com/harshitandro/mongo-es-datasync/src/MongoOplogs"
 	"github.com/sirupsen/logrus"
@@ -29,10 +31,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	bufferChannel := make(chan string)
-	MongoOplogs.TailOplogs(&bufferChannel)
-	for {
-		logger.Infoln("Oplog : ", <-bufferChannel)
+	err = ElasticDataLayer.Initialise(config)
+	if err != nil {
+		logger.Errorln("Error while creating Elasticsearch Client. Exiting")
+		os.Exit(1)
 	}
 
+	bufferChannel := make(chan map[string]interface{})
+	MongoOplogs.TailOplogs(&bufferChannel)
+	for {
+		doc := <-bufferChannel
+		//logger.Infoln("Oplog : ", doc)
+		operation, collection, err := DataTransformationLayer.OplogProcessor(&doc)
+		logger.WithField("operation", operation).WithField("collection", collection).Infoln("Document : ", doc)
+		if err != nil {
+			logger.Warningln("Unable to push to elasticsearch, error : ", err)
+			continue
+		}
+		ElasticDataLayer.PushToElastic(doc, operation, collection)
+	}
 }
