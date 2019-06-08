@@ -4,7 +4,7 @@
   },
   "Monogo": {
     "QueryRouterAddr": "127.0.0.1:27007",
-    "DbsToMonitor": ["k2db"]
+    "DbsToMonitor": ["test"]
   },
   "Elasticsearch": {
     "ElasticUrl": "127.0.0.1:9200"
