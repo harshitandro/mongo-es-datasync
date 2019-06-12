@@ -17,6 +17,7 @@ func init() {
 }
 
 func OplogProcessor(doc *map[string]interface{}) (string, string, error) {
+	var err error
 	operationType := (*doc)["op"]
 	switch operationType {
 	case "i", "d":
@@ -38,12 +39,12 @@ func OplogProcessor(doc *map[string]interface{}) (string, string, error) {
 		if len(namespace) != 2 {
 			return "", "", fmt.Errorf("Invalid update operation. Unsupported namespace : %s ", namespace)
 		}
-		*doc = MongoOplogs.GetRecordById(namespace[0], namespace[1], id.Hex())
+		*doc, err = MongoOplogs.GetRecordById(namespace[0], namespace[1], id.Hex())
 		if (*doc) != nil {
 			(*doc)["mid"] = id.Hex()
 			delete(*doc, "_id")
 		} else {
-			return "", "", fmt.Errorf("No record found for update operation by id: %s ", id.Hex())
+			return "", "", fmt.Errorf("No record found for update operation by id: %s due to error : %s", id.Hex(), err)
 		}
 		return operationType.(string), namespace[1], nil
 	default:

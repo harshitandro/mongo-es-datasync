@@ -25,7 +25,9 @@ func main() {
 	}
 	logger.Debugln("Application config loaded : ", config)
 
-	err = MongoOplogs.Initialise(config)
+	bufferChannel := make(chan map[string]interface{})
+
+	err = MongoOplogs.Initialise(config, &bufferChannel)
 	if err != nil {
 		logger.Errorln("Error while creating Mongo Client. Exiting")
 		os.Exit(1)
@@ -37,17 +39,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	bufferChannel := make(chan map[string]interface{})
-	MongoOplogs.TailOplogs(&bufferChannel)
 	for {
 		doc := <-bufferChannel
 		//logger.Infoln("Oplog : ", doc)
 		operation, collection, err := DataTransformationLayer.OplogProcessor(&doc)
-		logger.WithField("operation", operation).WithField("collection", collection).Infoln("Document : ", doc)
 		if err != nil {
-			logger.Warningln("Unable to push to elasticsearch, error : ", err)
+			logger.Warningln("Unable to transform Oplog Data, error : ", err)
 			continue
+		} else {
+			logger.WithField("operation", operation).WithField("collection", collection).Infoln("Document Length : ", len(doc))
 		}
-		ElasticDataLayer.PushToElastic(doc, operation, collection)
+		//ElasticDataLayer.PushToElastic(doc, operation, collection)
 	}
+
 }

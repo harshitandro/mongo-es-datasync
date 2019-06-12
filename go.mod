@@ -11,6 +11,7 @@ require github.com/elastic/go-elasticsearch/v7 v7.1.1
 require (
 	github.com/elastic/go-elasticsearch/v8 v8.0.0-20190524105426-8ed748708d21 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
+	github.com/remeh/sizedwaitgroup v0.0.0-20180822144253-5e7302b12cce
 	github.com/tidwall/gjson v1.2.1
 	github.com/tidwall/match v1.0.1 // indirect
 	github.com/tidwall/pretty v0.0.0-20190325153808-1166b9ac2b65 // indirect

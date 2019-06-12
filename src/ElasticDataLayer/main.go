@@ -31,7 +31,6 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration) error {
 	}
 
 	esClient, err = elasticsearch.NewClient(esConfig)
-	logger.Errorln("Error while creating Elastic Client: ", err)
 	// 1. Get cluster info
 	//
 	res, err := esClient.Info()

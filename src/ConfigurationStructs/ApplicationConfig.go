@@ -7,6 +7,7 @@ import (
 )
 
 var logger *logrus.Entry
+var config *ApplicationConfiguration
 
 func init() {
 	logger = Logging.GetLogger("ApplicationConfig", "Root")
@@ -26,7 +27,6 @@ type ApplicationConfiguration struct {
 }
 
 func LoadApplicationConfig() (ApplicationConfiguration, error) {
-	var config ApplicationConfiguration
 	viper.SetConfigName("app_conf")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./src")
@@ -34,13 +34,23 @@ func LoadApplicationConfig() (ApplicationConfiguration, error) {
 	err := viper.ReadInConfig()
 	if err != nil {
 		logger.Errorln("Error reading application config : ", err)
-		return config, err
+		return *config, err
 	}
 
 	err = viper.Unmarshal(&config)
 	if err != nil {
 		logger.Errorln("Error unmarshalling application config : ", err)
-		return config, err
+		return *config, err
 	}
-	return config, nil
+	return *config, nil
+}
+
+func GetApplicationConfig() ApplicationConfiguration {
+	if config == nil {
+		_, err := LoadApplicationConfig()
+		if err != nil {
+			return ApplicationConfiguration{}
+		}
+	}
+	return *config
 }
