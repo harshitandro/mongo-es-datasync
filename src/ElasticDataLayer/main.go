@@ -2,7 +2,6 @@ package ElasticDataLayer
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
@@ -56,13 +55,13 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration) error {
 	return nil
 }
 
-func PushToElastic(doc map[string]interface{}, operation string, collection string) error {
+func PushToElastic(doc map[string]interface{}, operation string, collection string) (int, bool) {
 	var res *esapi.Response
 	var err error
-
+	collection = strings.ToLower(collection)
 	objectId, err := primitive.ObjectIDFromHex(doc["mid"].(string))
 	if err != nil {
-		return fmt.Errorf("unable to fetch ObjectID for given doc : %s", doc)
+		return 000, false
 	}
 
 	switch operation {
@@ -87,20 +86,20 @@ func PushToElastic(doc map[string]interface{}, operation string, collection stri
 	//defer res.Body.Close()
 	if err != nil {
 		logger.Errorf("Push to Elasticsearch failed : %s\n", err)
-		return err
+		return res.StatusCode, res.IsError()
 	}
 	if res.IsError() {
-		logger.Printf("[%s] Error indexing document ID %s", res.Status(), objectId.Hex())
-		return nil
+		logger.Errorf("[%s] Error indexing document ID %s", res.Status(), objectId.Hex())
+		return res.StatusCode, res.IsError()
 	} else {
 		// Deserialize the response into a map.
 		var r map[string]interface{}
 		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-			logger.Printf("Error parsing the response body: %s", err)
+			logger.Errorf("Error parsing the response body: %s", err)
 		} else {
 			// Print the response status and indexed document version.
-			logger.Printf("[%s] %s; version=%d", res.Status(), r["result"], int(r["_version"].(float64)))
+			logger.Debugln("[%s] %s; version=%d", res.Status(), r["result"], int(r["_version"].(float64)))
 		}
+		return res.StatusCode, res.IsError()
 	}
-	return nil
 }

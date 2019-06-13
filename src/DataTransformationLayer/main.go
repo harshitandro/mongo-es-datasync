@@ -16,38 +16,37 @@ func init() {
 	logger = Logging.GetLogger("ElasticDataLayer", "Root")
 }
 
-func OplogProcessor(doc *map[string]interface{}) (string, string, error) {
+func MongoOplogProcessor(doc *map[string]interface{}) (string, string, string, primitive.Timestamp, error) {
 	var err error
 	operationType := (*doc)["op"]
+	sender := (*doc)["sender"].(string)
+	ns := (*doc)["ns"]
+	namespace := strings.Split(ns.(string), ".")
+	timestamp := (*doc)["ts"].(primitive.Timestamp)
+	if len(namespace) != 2 {
+		return "", "", sender, timestamp, fmt.Errorf("Invalid operation. Unsupported namespace : %s ", namespace)
+	}
 	switch operationType {
 	case "i", "d":
-		ns := (*doc)["ns"]
-		namespace := strings.Split(ns.(string), ".")
-		if len(namespace) != 2 {
-			return "", "", fmt.Errorf("Invalid insert/delete operation. Unsupported namespace : %s ", namespace)
-		}
+
 		(*doc)["o"].(map[string]interface{})["mid"] = (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID).Hex()
 		objectID := (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID)
 		delete((*doc)["o"].(map[string]interface{}), "_id")
 		*doc = (*doc)["o"].(map[string]interface{})
 		(*doc)["opTime"] = objectID.Timestamp()
-		return operationType.(string), namespace[1], nil
+		return operationType.(string), namespace[1], sender, timestamp, nil
 	case "u":
-		ns := (*doc)["ns"]
-		namespace := strings.Split(ns.(string), ".")
 		id := (*doc)["o2"].(map[string]interface{})["_id"].(primitive.ObjectID)
-		if len(namespace) != 2 {
-			return "", "", fmt.Errorf("Invalid update operation. Unsupported namespace : %s ", namespace)
-		}
+
 		*doc, err = MongoOplogs.GetRecordById(namespace[0], namespace[1], id.Hex())
 		if (*doc) != nil {
 			(*doc)["mid"] = id.Hex()
 			delete(*doc, "_id")
 		} else {
-			return "", "", fmt.Errorf("No record found for update operation by id: %s due to error : %s", id.Hex(), err)
+			return "", "", sender, timestamp, fmt.Errorf("No mongo record found for update operation by id: %s due to error : %s ", id.Hex(), err)
 		}
-		return operationType.(string), namespace[1], nil
+		return operationType.(string), namespace[1], sender, timestamp, nil
 	default:
-		return "", "", fmt.Errorf("Unsupported operation : %s ", operationType)
+		return "", "", sender, timestamp, fmt.Errorf("Unsupported operation : %s ", operationType)
 	}
 }
