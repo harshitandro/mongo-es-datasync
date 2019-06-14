@@ -6,6 +6,7 @@ import (
 	"github.com/harshitandro/mongo-es-datasync/src/ElasticDataLayer"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
 	"github.com/harshitandro/mongo-es-datasync/src/MongoOplogs"
+	"github.com/harshitandro/mongo-es-datasync/src/Utility/HealthCheck"
 	"github.com/sirupsen/logrus"
 	"os"
 )
@@ -26,6 +27,7 @@ func main() {
 	logger.Infoln("Application config loaded : ", config)
 
 	bufferChannel := make(chan map[string]interface{})
+	HealthCheck.EnableHealthCheck(&bufferChannel)
 
 	err = MongoOplogs.Initialise(config, &bufferChannel)
 	if err != nil {

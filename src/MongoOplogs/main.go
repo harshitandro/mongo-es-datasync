@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
+	"github.com/harshitandro/mongo-es-datasync/src/Utility/HealthCheck"
 	"github.com/remeh/sizedwaitgroup"
 	"github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -233,13 +234,16 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 		err = cursor.Decode(&m)
 		if m == nil {
 			logger.WithField("mongoShard", shardAddr).Warningln("Empty Cursor data :", cursor.Err())
+			HealthCheck.IncrementDbRecordsGenerated(false)
 			break
 		} else if err == nil {
 			//logger.WithField("mongoShard", shardAddr).Warningln("Feeding Cursor data :", m)
 			m["sender"] = shardAddr
 			*dataOutputChannel <- m
+			HealthCheck.IncrementDbRecordsGenerated(true)
 		} else {
 			logger.WithField("mongoShard", shardAddr).Errorln("Error while unmarshling bson raw to map : ", cursor.Current.String())
+			HealthCheck.IncrementDbRecordsGenerated(false)
 		}
 	}
 	if cursor.Err() != nil {

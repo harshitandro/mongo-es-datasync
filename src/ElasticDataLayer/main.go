@@ -7,6 +7,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v7/esutil"
 	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
+	"github.com/harshitandro/mongo-es-datasync/src/Utility/HealthCheck"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"strings"
@@ -61,6 +62,7 @@ func PushToElastic(doc map[string]interface{}, operation string, collection stri
 	collection = strings.ToLower(collection)
 	objectId, err := primitive.ObjectIDFromHex(doc["mid"].(string))
 	if err != nil {
+		HealthCheck.IncrementESRecordsStored(false)
 		return 000, false
 	}
 
@@ -86,19 +88,23 @@ func PushToElastic(doc map[string]interface{}, operation string, collection stri
 	//defer res.Body.Close()
 	if err != nil {
 		logger.Errorf("Push to Elasticsearch failed : %s\n", err)
+		HealthCheck.IncrementESRecordsStored(false)
 		return res.StatusCode, res.IsError()
 	}
 	if res.IsError() {
 		logger.Errorf("[%s] Error indexing document ID %s", res.Status(), objectId.Hex())
+		HealthCheck.IncrementESRecordsStored(false)
 		return res.StatusCode, res.IsError()
 	} else {
 		// Deserialize the response into a map.
 		var r map[string]interface{}
 		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 			logger.Errorf("Error parsing the response body: %s", err)
+			HealthCheck.IncrementESRecordsStored(false)
 		} else {
 			// Print the response status and indexed document version.
 			logger.Debugln("[%s] %s; version=%d", res.Status(), r["result"], int(r["_version"].(float64)))
+			HealthCheck.IncrementESRecordsStored(true)
 		}
 		return res.StatusCode, res.IsError()
 	}
