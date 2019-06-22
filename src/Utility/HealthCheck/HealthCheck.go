@@ -3,6 +3,7 @@ package HealthCheck
 import (
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
 	"github.com/sirupsen/logrus"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"sync"
 	"time"
 )
@@ -13,13 +14,15 @@ var incrementDbRecordsGeneratedMutex sync.Mutex
 var incrementDbRecordsProcessedMutex sync.Mutex
 var incrementesRecordsStoredMutex sync.Mutex
 var dataChannelRef *chan map[string]interface{}
+var lastOpTimestamp *map[string]primitive.Timestamp
 
 func init() {
 	logger = Logging.GetLogger("HealthCheck", "Root")
 }
 
-func EnableHealthCheck(dataChannel *chan map[string]interface{}) {
+func EnableHealthCheck(dataChannel *chan map[string]interface{}, lastOperation *map[string]primitive.Timestamp) {
 	dataChannelRef = dataChannel
+	lastOpTimestamp = lastOperation
 	logger.Infoln("Starting healthcheck printing in every 10 seconds")
 	go scheduleDisplayHealthCheck()
 }
@@ -74,7 +77,7 @@ func resetHealthCheck() {
 
 func scheduleDisplayHealthCheck() {
 	for {
-		logger.WithField("dbRecordsGeneratePassed", healthcheck.dbRecordsGeneratePassed).WithField("dbRecordsGenerateFailed", healthcheck.dbRecordsGenerateFailed).WithField("dbRecordsProcessPassed", healthcheck.dbRecordsProcessPassed).WithField("dbRecordsProcessFailed", healthcheck.dbRecordsProcessFailed).WithField("esRecordsStorePassed", healthcheck.esRecordsStorePassed).WithField("esRecordsStoreFailed", healthcheck.esRecordsStoreFailed).WithField("pendingRecords", len(*dataChannelRef)).Infof("Healthcheck for last 10 seconds")
+		logger.WithField("dbRecordsGeneratePassed", healthcheck.dbRecordsGeneratePassed).WithField("dbRecordsGenerateFailed", healthcheck.dbRecordsGenerateFailed).WithField("dbRecordsProcessPassed", healthcheck.dbRecordsProcessPassed).WithField("dbRecordsProcessFailed", healthcheck.dbRecordsProcessFailed).WithField("esRecordsStorePassed", healthcheck.esRecordsStorePassed).WithField("esRecordsStoreFailed", healthcheck.esRecordsStoreFailed).WithField("pendingRecords", len(*dataChannelRef)).WithField("lastOperationRecord", *lastOpTimestamp).Infof("Healthcheck for last 10 seconds")
 		resetHealthCheck()
 		time.Sleep(10 * time.Second)
 	}

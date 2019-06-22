@@ -27,7 +27,6 @@ func main() {
 	logger.Infoln("Application config loaded : ", config)
 
 	bufferChannel := make(chan map[string]interface{})
-	HealthCheck.EnableHealthCheck(&bufferChannel)
 
 	err = MongoOplogs.Initialise(config, &bufferChannel)
 	if err != nil {
@@ -40,6 +39,8 @@ func main() {
 		logger.Errorln("Error while creating Elasticsearch Client : ", err)
 		os.Exit(1)
 	}
+	// Start healthcheck after everything
+	HealthCheck.EnableHealthCheck(&bufferChannel, &MongoOplogs.LastOperation)
 
 	for {
 		doc := <-bufferChannel

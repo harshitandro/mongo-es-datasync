@@ -9,6 +9,7 @@ require github.com/spf13/viper v1.4.0
 require github.com/elastic/go-elasticsearch/v7 v7.1.1
 
 require (
+	github.com/banzaicloud/logrus-runtime-formatter v0.0.0-20180617171254-12df4a18567f
 	github.com/elastic/go-elasticsearch/v8 v8.0.0-20190524105426-8ed748708d21 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/remeh/sizedwaitgroup v0.0.0-20180822144253-5e7302b12cce
