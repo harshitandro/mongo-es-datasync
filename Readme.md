@@ -50,11 +50,11 @@ The config file has the following format:
 
 ### Features
 Following feature set is currently present:
--[x] Oplog tailing from Sharded Replicated MongoDb cluster.
--[x] Auto resume from last operation state in case of application restart.
--[x] Auto reconnect in case of connectivity failure from either mongoDB or Elasticsearch.
--[x] Authentication for mongoDB connections.
--[ ] Authentication for elasticsearch connections.
+- [x] Oplog tailing from Sharded Replicated MongoDb cluster.
+- [x] Auto resume from last operation state in case of application restart.
+- [x] Auto reconnect in case of connectivity failure from either mongoDB or Elasticsearch.
+- [x] Authentication for mongoDB connections.
+- [ ] Authentication for elasticsearch connections.
 
 
 ### Compatibility
