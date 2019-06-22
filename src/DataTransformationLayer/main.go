@@ -17,7 +17,14 @@ func init() {
 	logger = Logging.GetLogger("ElasticDataLayer", "Root")
 }
 
+func recoverPanic(doc *map[string]interface{}) {
+	if r := recover(); r != nil {
+		logger.Errorln("Panic while processing doc : ", *doc)
+	}
+}
+
 func MongoOplogProcessor(doc *map[string]interface{}) (string, string, string, primitive.Timestamp, error) {
+	defer recoverPanic(doc)
 	var err error
 	operationType := (*doc)["op"]
 	sender := (*doc)["sender"].(string)

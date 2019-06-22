@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-type controlBlock struct {
+type ControlBlock struct {
 	shardAddr      string
 	replicasetName string
 	lastTimestamp  primitive.Timestamp
@@ -34,11 +34,11 @@ var queryRouterAddr string
 var timestampToResume primitive.Timestamp
 var shardsAddr map[string]string
 var dataOutputChannel *chan map[string]interface{}
-var controlChannel chan controlBlock
+var controlChannel chan ControlBlock
 var shardCientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientMutex sync.Mutex
-var lastOperation map[string]primitive.Timestamp
+var LastOperation map[string]primitive.Timestamp
 
 func init() {
 	logger = Logging.GetLogger("MongoOplogs", "Root")
@@ -60,24 +60,21 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration, outputChan
 	if err != nil {
 		return err
 	}
-	err = detectMongoConfig()
-	if err != nil {
-		return err
+	isSuccessful := detectMongoConfig()
+	if !isSuccessful {
+		return errors.New("Unable to find supported mongo cluster config in the given cluster")
 	}
 	logger.Infoln("Mongo Client created successfully to Mongo Cluster : ", queryRouterAddr)
 	logger.Infoln("Monitoring DBs: ", dbsToMonitor)
 	logger.Infoln("Starting tailing oplogs for monitored dbs since timestamp : ", timestampToResume)
-	logger.Infoln("Total Shards found: ", len(shardsAddr))
-	for id, addr := range shardsAddr {
-		logger.Infoln("Shard found: ID ", id, " : ", addr)
-	}
 	go dispatcher()
 
 	return nil
 }
 
-func detectMongoConfig() error {
-
+//TODO : Need to rewrite the detection for Replicas omly as Shards don't have the oplogs.
+func detectMongoConfig() (isSuccessful bool) {
+	isSuccessful = false
 	adminDatabase := mongoClient.Database("admin")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -85,37 +82,41 @@ func detectMongoConfig() error {
 
 	result := adminDatabase.RunCommand(ctx, bson.D{{"listShards", true}})
 	if result.Err() != nil {
-		return result.Err()
+		logger.Warningln("Error running command to get shard config : ", result.Err())
 	}
+
 	shardConfig, err := result.DecodeBytes()
 	if err != nil {
-		return err
+		logger.Warningln("Error decoding shard config : ", err)
 	}
 
 	shardResult := gjson.Get(shardConfig.String(), "shards.#.host")
 
 	if !shardResult.Exists() {
-		return errors.New("Unable to detect sharded config in current mongo cluster")
-	}
-
-	for _, shard := range shardResult.Array() {
-		shardInfo := strings.Split(shard.String(), "/")
-		shardsAddr[shardInfo[0]] = shardInfo[1]
-
+		logger.Warningln("Unable to detect sharded config in current mongo cluster")
+	} else {
+		for _, shard := range shardResult.Array() {
+			shardInfo := strings.Split(shard.String(), "/")
+			shardsAddr[shardInfo[0]] = shardInfo[1]
+		}
 	}
 
 	if len(shardsAddr) == 0 {
-		return errors.New("Shard address list empty. Unable to detect sharded config in current mongo cluster")
+		logger.Warningln("Replica list empty. Unable to detect replica config in current mongo cluster")
 	} else {
 		logger.Debugln("Creating control channel with buffer size : ", len(shardsAddr))
-		controlChannel = make(chan controlBlock, len(shardsAddr)+1)
+		controlChannel = make(chan ControlBlock, len(shardsAddr)+1)
 		shardCientWaitGroup = sizedwaitgroup.New(len(shardsAddr))
-		lastOperation = make(map[string]primitive.Timestamp)
-		for _, shard := range shardsAddr {
-			lastOperation[shard] = timestampToResume
+		LastOperation = make(map[string]primitive.Timestamp)
+
+		for id, addr := range shardsAddr {
+			logger.Infoln("Replica found: ID ", id, " : ", addr)
+			LastOperation[addr] = timestampToResume
 		}
+		logger.Infoln("Total replicas found: ", len(shardsAddr))
+		isSuccessful = true
 	}
-	return nil
+	return
 }
 
 func createQueryClient(waitGroup *sizedwaitgroup.SizedWaitGroup) error {
@@ -137,7 +138,7 @@ func createQueryClient(waitGroup *sizedwaitgroup.SizedWaitGroup) error {
 		}
 
 	}
-	mongoClient, err = mongo.NewClient(options.Client().ApplyURI("mongodb://" + queryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+	mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
 	if err != nil {
 		logger.Errorln("Error while creating Mongo Query Client : ", err)
 		return err
@@ -172,7 +173,7 @@ func GetRecordById(db string, collection string, objectIDHex string) (map[string
 	// TODO: Need better approach to distinguish between no record being present or connection failures.
 	result := collectionObj.FindOne(ctx, bson.D{{"_id", objectID}})
 	if result.Err() != nil {
-		controlChannel <- controlBlock{call: 0}
+		controlChannel <- ControlBlock{call: 0}
 		return nil, fmt.Errorf("can't get mongo record by ObjectID : %s", result.Err())
 	}
 	var doc map[string]interface{}
@@ -207,7 +208,7 @@ func closeShardConnection(shardAddr string, replicasetName string, client *mongo
 		c, _ := context.WithTimeout(ctx, 5*time.Second)
 		client.Disconnect(c)
 	}
-	controlChannel <- controlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: lastOperation[shardAddr], call: 1}
+	controlChannel <- ControlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: LastOperation[shardAddr], call: 1}
 }
 
 func tailOplogForShard(shardAddr string, replicasetName string, timestampToResumeTail primitive.Timestamp, waitGroup *sizedwaitgroup.SizedWaitGroup) {
@@ -255,9 +256,9 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 
 func dispatcher() {
 	for replicasetName, shardAddr := range shardsAddr {
-		controlChannel <- controlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: timestampToResume, call: 1}
+		controlChannel <- ControlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: timestampToResume, call: 1}
 	}
-	var command controlBlock
+	var command ControlBlock
 	for {
 		command = <-controlChannel
 		logger.Infoln("Received control command to start oplog tailing for : "+string(len(controlChannel))+": ", command)
@@ -274,5 +275,5 @@ func dispatcher() {
 }
 
 func UpdateLastOperationDetails(sender string, lastTimestamp primitive.Timestamp) {
-	lastOperation[sender] = lastTimestamp
+	LastOperation[sender] = lastTimestamp
 }
