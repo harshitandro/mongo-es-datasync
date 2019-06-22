@@ -30,11 +30,10 @@ type ApplicationConfiguration struct {
 
 func LoadApplicationConfig() (ApplicationConfiguration, error) {
 	viper.SetConfigName("app_conf")
+	viper.AddConfigPath("/tmp")
 	viper.AddConfigPath("/")
-	viper.AddConfigPath("/etc/mongo-es-sync")
 	viper.AddConfigPath(".")
-	viper.AddConfigPath("./src")
-	viper.AddConfigPath("./src/conf")
+	viper.AddConfigPath("/etc/mongo-es-sync")
 	err := viper.ReadInConfig()
 	if err != nil {
 		logger.Errorln("Error reading application config : ", err)
@@ -66,5 +65,5 @@ func SaveApplicationConfig(config ApplicationConfiguration) {
 		return
 	}
 	viper.MergeConfig(bytes.NewReader(requestByte))
-	viper.WriteConfig()
+	viper.WriteConfigAs("/tmp/app_conf.json")
 }

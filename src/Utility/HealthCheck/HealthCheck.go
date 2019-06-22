@@ -89,10 +89,10 @@ func scheduleDisplayHealthCheck() {
 }
 
 func updateAndSaveConfig() {
-	var maxTime uint32
+	var minTime uint32
 	for _, v := range *lastOpTimestamp {
-		maxTime = uint32(math.Max(float64(maxTime), float64(v.T)))
+		minTime = uint32(math.Min(float64(minTime), float64(v.T)))
 	}
-	(*config).Application.LastTimestampToResume = maxTime
+	(*config).Application.LastTimestampToResume = minTime
 	ConfigurationStructs.SaveApplicationConfig(*config)
 }
