@@ -39,6 +39,8 @@ var shardCientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientMutex sync.Mutex
 var LastOperation map[string]primitive.Timestamp
+var authData options.Credential
+var enableAuth bool
 
 func init() {
 	logger = Logging.GetLogger("MongoOplogs", "Root")
@@ -52,9 +54,20 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration, outputChan
 	if dataOutputChannel == nil {
 		return errors.New("given outputChannel is nil")
 	}
-	dbsToMonitor = config.Monogo.DbsToMonitor
-	queryRouterAddr = config.Monogo.QueryRouterAddr
+	dbsToMonitor = config.Db.Mongo.DbsToMonitor
+	queryRouterAddr = config.Db.Mongo.QueryRouterAddr
 	timestampToResume = primitive.Timestamp{config.Application.LastTimestampToResume, 0}
+
+	if (ConfigurationStructs.MongoAuth{}) != config.Db.Mongo.Auth {
+		enableAuth = true
+		authData.AuthSource = config.Db.Mongo.Auth.Source
+		authData.Username = config.Db.Mongo.Auth.Username
+		authData.Password = config.Db.Mongo.Auth.Password
+		logger.Debugln("Enabling authentication based connection to MongoDB.")
+	} else {
+		logger.Debugln("Connecting without authentication to MongoDB")
+	}
+
 	queryClientWaitGroup.Add()
 	err = createQueryClient(&queryClientWaitGroup)
 	if err != nil {
@@ -138,7 +151,11 @@ func createQueryClient(waitGroup *sizedwaitgroup.SizedWaitGroup) error {
 		}
 
 	}
-	mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+	if enableAuth {
+		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetAuth(authData).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+	} else {
+		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+	}
 	if err != nil {
 		logger.Errorln("Error while creating Mongo Query Client : ", err)
 		return err
@@ -183,7 +200,13 @@ func GetRecordById(db string, collection string, objectIDHex string) (map[string
 
 func createShardClient(replicasetName string, shardAddr string) (*mongo.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Second).SetConnectTimeout(15*time.Second))
+	var client *mongo.Client
+	var err error
+	if enableAuth {
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetAuth(authData).SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Second).SetConnectTimeout(15*time.Second))
+	} else {
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Second).SetConnectTimeout(15*time.Second))
+	}
 	defer cancel()
 
 	if err != nil {

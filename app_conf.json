@@ -1,14 +1,21 @@
 {
   "application": {
-    "lasttimestamptoresume": 0
+    "lastTimestampToResume": 0
   },
   "elasticsearch": {
-    "elasticurl": "127.0.0.1:9200"
+    "elasticURL": "127.0.0.1:9200"
   },
-  "monogo": {
-    "dbstomonitor": [
-      "test"
-    ],
-    "queryrouteraddr": "127.0.0.1:27007"
+  "db": {
+    "mongo": {
+      "dbsToMonitor": [
+        "test"
+      ],
+      "queryRouterAddr": "127.0.0.1:27007",
+      "auth": {
+        "username": "",
+        "password": "",
+        "source": ""
+      }
+    }
   }
 }

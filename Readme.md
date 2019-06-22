@@ -18,30 +18,43 @@ The config file has the following format:
 ```
 {
   "application": {
-    "lasttimestamptoresume": 0
+    "lastTimestampToResume": 0
   },
   "elasticsearch": {
-    "elasticurl": "127.0.0.1:9200"
+    "elasticURL": "127.0.0.1:9200"
   },
-  "monogo": {
-    "dbstomonitor": [
-      "test"
-    ],
-    "queryrouteraddr": "127.0.0.1:27007"
+  "db": {
+    "mongo": {
+      "dbsToMonitor": [
+        "test"
+      ],
+      "queryRouterAddr": "127.0.0.1:27007",
+      "auth": {
+        "username" : "",
+        "password": "",
+        "source" : ""
+      }
+    }
   }
 }
 ```
-- `application.lasttimestamptoresume` determines the mongoDB oplog timestamp from which the application should resume sync to ES.
-- `elasticsearch.elasticurl` is the elastic URL of your ES cluster.
-- `monogo.dbstomonitor` is a list of dbs in your mongo which are to be synced to ES.
-- `monogo.queryrouteraddr` is the address of your mongoDb's Query Router.
+
+- `application.lastTimestampToResume` determines the mongoDB oplog timestamp from which the application should resume sync to ES.
+- `elasticsearch.elasticURL` is the elastic URL of your ES cluster.
+- `db.mongo.dbsToMonitor` is a list of dbs in your mongo which are to be synced to ES.
+- `db.mongo.queryRouterAddr` is the address of your mongoDb's Query Router.
+- [OPTIONAL]`db.mongo.auth` defines the authentication credentials for the given MongoDB.
+    - `db.mongo.auth.username` defines the authentication username.
+    - `db.mongo.auth.password` defines the authentication password.
+    - `db.mongo.auth.source` defines the authentication database of the given username. 
 
 ### Features
 Following feature set is currently present:
-- [x] Oplog tailing from Sharded Replicated MongoDb cluster.
-- [x] Auto resume from last operation state in case of application restart.
-- [x] Auto reconnect in case of connectivity failure from either mongoDB or Elasticsearch.
-- [ ] Authentication for mongoDB & elasticsearch connections. 
+-[x] Oplog tailing from Sharded Replicated MongoDb cluster.
+-[x] Auto resume from last operation state in case of application restart.
+-[x] Auto reconnect in case of connectivity failure from either mongoDB or Elasticsearch.
+-[x] Authentication for mongoDB connections.
+-[ ] Authentication for elasticsearch connections.
 
 
 ### Compatibility

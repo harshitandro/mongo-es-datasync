@@ -1,11 +1,10 @@
 package ConfigurationStructs
 
 import (
-	"bytes"
 	"encoding/json"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
+	"os"
 )
 
 var logger *logrus.Entry
@@ -16,36 +15,35 @@ func init() {
 }
 
 type ApplicationConfiguration struct {
-	Application struct {
-		LastTimestampToResume uint32 `json:"lasttimestamptoresume"`
-	} `json:"application"`
-	Monogo struct {
-		QueryRouterAddr string   `json:"queryrouteraddr"`
-		DbsToMonitor    []string `json:"dbstomonitor"`
-	} `json:"monogo"`
-	Elasticsearch struct {
-		ElasticURL string `json:"elasticurl"`
-	} `json:"elasticsearch"`
+	Application   Application   `json:"application"`
+	Elasticsearch Elasticsearch `json:"elasticsearch"`
+	Db            Db            `json:"db"`
+}
+type Application struct {
+	LastTimestampToResume uint32 `json:"lastTimestampToResume"`
+}
+type Elasticsearch struct {
+	ElasticURL string `json:"elasticURL"`
+}
+type Db struct {
+	Mongo Mongo `json:"mongo"`
+}
+type Mongo struct {
+	DbsToMonitor    []string  `json:"dbsToMonitor"`
+	QueryRouterAddr string    `json:"queryRouterAddr"`
+	Auth            MongoAuth `json:"auth"`
+}
+type MongoAuth struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Source   string `json:"source"`
 }
 
 func LoadApplicationConfig() (ApplicationConfiguration, error) {
-	viper.SetConfigName("app_conf")
-	viper.AddConfigPath("/tmp")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("/")
-	viper.AddConfigPath("/etc/mongo-es-sync")
-	err := viper.ReadInConfig()
-	if err != nil {
-		logger.Errorln("Error reading application config : ", err)
-		return *config, err
-	}
-
-	err = viper.Unmarshal(&config)
-	if err != nil {
-		logger.Errorln("Error unmarshalling application config : ", err)
-		return *config, err
-	}
-
+	configFile, _ := os.Open("app_conf.json")
+	defer configFile.Close()
+	decoder := json.NewDecoder(configFile)
+	decoder.Decode(&config)
 	return *config, nil
 }
 
@@ -60,10 +58,8 @@ func GetApplicationConfig() ApplicationConfiguration {
 }
 
 func SaveApplicationConfig(config ApplicationConfiguration) {
-	requestByte, err := json.Marshal(config)
-	if err != nil {
-		return
-	}
-	viper.MergeConfig(bytes.NewReader(requestByte))
-	viper.WriteConfigAs("/tmp/app_conf.json")
+	configFile, _ := os.Open("/tmp/app_conf.json")
+	defer configFile.Close()
+	encoder := json.NewEncoder(configFile)
+	encoder.Encode(config)
 }
