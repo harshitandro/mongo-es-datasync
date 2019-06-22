@@ -3,12 +3,12 @@
     "lasttimestamptoresume": 0
   },
   "elasticsearch": {
-    "elasticurl": "172.17.0.1:9200"
+    "elasticurl": "127.0.0.1:9200"
   },
   "monogo": {
     "dbstomonitor": [
-      "k2db"
+      "test"
     ],
-    "queryrouteraddr": "192.168.5.242:27007"
+    "queryrouteraddr": "127.0.0.1:27007"
   }
 }

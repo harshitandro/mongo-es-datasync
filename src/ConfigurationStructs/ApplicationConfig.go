@@ -31,8 +31,8 @@ type ApplicationConfiguration struct {
 func LoadApplicationConfig() (ApplicationConfiguration, error) {
 	viper.SetConfigName("app_conf")
 	viper.AddConfigPath("/tmp")
-	viper.AddConfigPath("/")
 	viper.AddConfigPath(".")
+	viper.AddConfigPath("/")
 	viper.AddConfigPath("/etc/mongo-es-sync")
 	err := viper.ReadInConfig()
 	if err != nil {
