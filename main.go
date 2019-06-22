@@ -19,6 +19,7 @@ func init() {
 
 func main() {
 	//defer profile.Start(profile.MemProfile).Stop()
+	var config ConfigurationStructs.ApplicationConfiguration
 	config, err := ConfigurationStructs.LoadApplicationConfig()
 	if err != nil {
 		logger.Errorln("Error while loading application config. Exiting")
@@ -40,7 +41,7 @@ func main() {
 		os.Exit(1)
 	}
 	// Start healthcheck after everything
-	HealthCheck.EnableHealthCheck(&bufferChannel, &MongoOplogs.LastOperation)
+	HealthCheck.EnableHealthCheck(&bufferChannel, &MongoOplogs.LastOperation, &config)
 
 	for {
 		doc := <-bufferChannel
