@@ -1,6 +1,7 @@
 {
   "application": {
-    "lastTimestampToResume": 0
+    "lastTimestampToResume": 0,
+    "logLevel": "INFO"
   },
   "elasticsearch": {
     "elasticURL": "127.0.0.1:9200"

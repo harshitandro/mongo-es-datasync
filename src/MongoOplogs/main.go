@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/ConfigurationModels"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/DatabaseModels/CommonDatabaseModels"
 	"github.com/harshitandro/mongo-es-datasync/src/Utility/HealthCheck"
 	"github.com/remeh/sizedwaitgroup"
 	"github.com/sirupsen/logrus"
@@ -20,45 +21,37 @@ import (
 	"time"
 )
 
-type ControlBlock struct {
-	shardAddr      string
-	replicasetName string
-	lastTimestamp  primitive.Timestamp
-	call           uint8
-}
-
 var logger *logrus.Entry
 var mongoClient *mongo.Client
-var dbsToMonitor []string
-var queryRouterAddr string
-var timestampToResume primitive.Timestamp
 var shardsAddr map[string]string
-var dataOutputChannel *chan map[string]interface{}
-var controlChannel chan ControlBlock
+var dataOutputChannel *chan CommonDatabaseModels.OplogMessage
+var controlChannel chan CommonDatabaseModels.ControlBlock
 var shardCientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientWaitGroup sizedwaitgroup.SizedWaitGroup
 var queryClientMutex sync.Mutex
-var LastOperation map[string]primitive.Timestamp
 var authData options.Credential
 var enableAuth bool
+var mongoConfig ConfigurationModels.Mongo
+var timestampToResume primitive.Timestamp
+
+var LastOperation CommonDatabaseModels.LastOperation
 
 func init() {
-	logger = Logging.GetLogger("MongoOplogs", "Root")
+	logger = Logging.GetLogger("Root")
 	shardsAddr = make(map[string]string)
 }
 
-func Initialise(config ConfigurationStructs.ApplicationConfiguration, outputChannel *chan map[string]interface{}) error {
+func Initialise(config ConfigurationModels.ApplicationConfiguration, outputChannel *chan CommonDatabaseModels.OplogMessage) error {
 	var err error
 	queryClientWaitGroup = sizedwaitgroup.New(1)
 	dataOutputChannel = outputChannel
 	if dataOutputChannel == nil {
 		return errors.New("given outputChannel is nil")
 	}
-	dbsToMonitor = config.Db.Mongo.DbsToMonitor
-	queryRouterAddr = config.Db.Mongo.QueryRouterAddr
+	mongoConfig = config.Db.Mongo
 	timestampToResume = primitive.Timestamp{config.Application.LastTimestampToResume, 0}
 
-	if (ConfigurationStructs.MongoAuth{}) != config.Db.Mongo.Auth {
+	if (ConfigurationModels.MongoAuth{}) != config.Db.Mongo.Auth {
 		enableAuth = true
 		authData.AuthSource = config.Db.Mongo.Auth.Source
 		authData.Username = config.Db.Mongo.Auth.Username
@@ -77,8 +70,8 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration, outputChan
 	if !isSuccessful {
 		return errors.New("Unable to find supported mongo cluster config in the given cluster")
 	}
-	logger.Infoln("Mongo Client created successfully to Mongo Cluster : ", queryRouterAddr)
-	logger.Infoln("Monitoring DBs: ", dbsToMonitor)
+	logger.Infoln("Mongo Client created successfully to Mongo Cluster : ", mongoConfig.QueryRouterAddr)
+	logger.Infoln("Monitoring DBs: ", mongoConfig.DbsToMonitor)
 	logger.Infoln("Starting tailing oplogs for monitored dbs since timestamp : ", timestampToResume)
 	go dispatcher()
 
@@ -118,7 +111,7 @@ func detectMongoConfig() (isSuccessful bool) {
 		logger.Warningln("Replica list empty. Unable to detect replica config in current mongo cluster")
 	} else {
 		logger.Debugln("Creating control channel with buffer size : ", len(shardsAddr))
-		controlChannel = make(chan ControlBlock, len(shardsAddr)+1)
+		controlChannel = make(chan CommonDatabaseModels.ControlBlock, len(shardsAddr)+1)
 		shardCientWaitGroup = sizedwaitgroup.New(len(shardsAddr))
 		LastOperation = make(map[string]primitive.Timestamp)
 
@@ -152,9 +145,9 @@ func createQueryClient(waitGroup *sizedwaitgroup.SizedWaitGroup) error {
 
 	}
 	if enableAuth {
-		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetAuth(authData).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + mongoConfig.QueryRouterAddr).SetAuth(authData).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
 	} else {
-		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + queryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
+		mongoClient, err = mongo.NewClient(options.Client().SetDirect(true).ApplyURI("mongodb://" + mongoConfig.QueryRouterAddr).SetSocketTimeout(15 * time.Second).SetConnectTimeout(15 * time.Second))
 	}
 	if err != nil {
 		logger.Errorln("Error while creating Mongo Query Client : ", err)
@@ -190,7 +183,7 @@ func GetRecordById(db string, collection string, objectIDHex string) (map[string
 	// TODO: Need better approach to distinguish between no record being present or connection failures.
 	result := collectionObj.FindOne(ctx, bson.D{{"_id", objectID}})
 	if result.Err() != nil {
-		controlChannel <- ControlBlock{call: 0}
+		controlChannel <- CommonDatabaseModels.ControlBlock{Call: 0}
 		return nil, fmt.Errorf("can't get mongo record by ObjectID : %s", result.Err())
 	}
 	var doc map[string]interface{}
@@ -231,7 +224,7 @@ func closeShardConnection(shardAddr string, replicasetName string, client *mongo
 		c, _ := context.WithTimeout(ctx, 5*time.Second)
 		client.Disconnect(c)
 	}
-	controlChannel <- ControlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: LastOperation[shardAddr], call: 1}
+	controlChannel <- CommonDatabaseModels.ControlBlock{ShardAddr: shardAddr, ReplicasetName: replicasetName, LastTimestamp: LastOperation[shardAddr], Call: 1}
 }
 
 func tailOplogForShard(shardAddr string, replicasetName string, timestampToResumeTail primitive.Timestamp, waitGroup *sizedwaitgroup.SizedWaitGroup) {
@@ -247,7 +240,7 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 	database := client.Database("local").Collection("oplog.rs")
 	opts := options.FindOptions{}
 
-	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gte", timestampToResumeTail}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(dbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts.SetCursorType(options.TailableAwait))
+	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gte", timestampToResumeTail}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(mongoConfig.DbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts.SetCursorType(options.TailableAwait))
 	if err != nil {
 		logger.WithField("mongoShard", shardAddr).Errorln("Error while tailing oplog : ", err)
 		return
@@ -255,43 +248,54 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 
 	for cursor.Next(ctx) {
 		var m map[string]interface{}
+		var oplogMessage CommonDatabaseModels.OplogMessage
+		var err error
 		err = cursor.Decode(&m)
 		if m == nil {
 			logger.WithField("mongoShard", shardAddr).Warningln("Empty Cursor data :", cursor.Err())
-			HealthCheck.IncrementDbRecordsGenerated(false)
 			break
 		} else if err == nil {
-			//logger.WithField("mongoShard", shardAddr).Warningln("Feeding Cursor data :", m)
-			m["sender"] = shardAddr
-			*dataOutputChannel <- m
 			HealthCheck.IncrementDbRecordsGenerated(true)
+			m["sender"] = shardAddr
+			logger.WithField("mongoShard", shardAddr).Debugln("Feeding Cursor data :", m)
+			oplogMessage, err = MongoOplogProcessor(&m)
+			if err == nil && !oplogMessage.IsAnyNil() {
+				*dataOutputChannel <- oplogMessage
+				HealthCheck.IncrementDbRecordsProcessed(true)
+			} else if oplogMessage.IsAnyNil() {
+				logger.WithField("mongoShard", shardAddr).Warningln("Dropping incomplete/incorrect oplog from processing : ", m, " : ", oplogMessage)
+				HealthCheck.IncrementDbRecordsProcessed(false)
+			} else {
+				logger.WithField("mongoShard", shardAddr).Warningln("Dropping oplog from processing : ", m, " : ", err)
+				HealthCheck.IncrementDbRecordsProcessed(false)
+			}
 		} else {
-			logger.WithField("mongoShard", shardAddr).Errorln("Error while unmarshling bson raw to map : ", cursor.Current.String())
+			logger.WithField("mongoShard", shardAddr).Warningln("Error while unmarshling bson raw to map : ", cursor.Current.String())
 			HealthCheck.IncrementDbRecordsGenerated(false)
 		}
 	}
 	if cursor.Err() != nil {
-		logger.WithField("mongoShard", shardAddr).Warningln("Tail oplog exiting due to error :", cursor.Err())
+		logger.WithField("mongoShard", shardAddr).Errorln("Tail oplog exiting due to error :", cursor.Err())
 	} else {
-		logger.WithField("mongoShard", shardAddr).Warningln("Tail oplog exiting")
+		logger.WithField("mongoShard", shardAddr).Errorln("Tail oplog exiting")
 	}
 }
 
 func dispatcher() {
 	for replicasetName, shardAddr := range shardsAddr {
-		controlChannel <- ControlBlock{shardAddr: shardAddr, replicasetName: replicasetName, lastTimestamp: timestampToResume, call: 1}
+		controlChannel <- CommonDatabaseModels.ControlBlock{ShardAddr: shardAddr, ReplicasetName: replicasetName, LastTimestamp: timestampToResume, Call: 1}
 	}
-	var command ControlBlock
+	var command CommonDatabaseModels.ControlBlock
 	for {
 		command = <-controlChannel
 		logger.Infoln("Received control command to start oplog tailing for : "+string(len(controlChannel))+": ", command)
-		switch command.call {
+		switch command.Call {
 		case 0:
 			queryClientWaitGroup.Add()
 			go createQueryClient(&queryClientWaitGroup)
 		case 1:
 			shardCientWaitGroup.Add()
-			go tailOplogForShard(command.shardAddr, command.replicasetName, command.lastTimestamp, &shardCientWaitGroup)
+			go tailOplogForShard(command.ShardAddr, command.ReplicasetName, command.LastTimestamp, &shardCientWaitGroup)
 		}
 
 	}
@@ -299,4 +303,61 @@ func dispatcher() {
 
 func UpdateLastOperationDetails(sender string, lastTimestamp primitive.Timestamp) {
 	LastOperation[sender] = lastTimestamp
+}
+
+func recoverPanic(doc *map[string]interface{}) {
+	if r := recover(); r != nil {
+		//HealthCheck.IncrementDbRecordsProcessed(false)
+		//logger.WithField("trace", string(debug.Stack())).Errorln("Panic while processing doc : ", r, "\n : ", *doc)
+	}
+}
+
+func MongoOplogProcessor(doc *map[string]interface{}) (CommonDatabaseModels.OplogMessage, error) {
+	var oplogMessage CommonDatabaseModels.OplogMessage
+	defer recoverPanic(doc)
+	var err error
+	operationType := (*doc)["op"]
+	sender := (*doc)["sender"].(string)
+	ns := (*doc)["ns"]
+	namespace := strings.Split(ns.(string), ".")
+	timestamp := (*doc)["ts"].(primitive.Timestamp)
+	if len(namespace) != 2 {
+		return oplogMessage, fmt.Errorf("Invalid operation. Unsupported namespace : %s ", namespace)
+	}
+	switch operationType {
+	case "i", "d":
+
+		//(*doc)["o"].(map[string]interface{})["mid"] = (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID).Hex()
+		objectID := (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID)
+		(*doc)["opTime"] = objectID.Timestamp()
+		oplogMessage.ID = objectID.Hex()
+		delete((*doc)["o"].(map[string]interface{}), "_id")
+		*doc = (*doc)["o"].(map[string]interface{})
+
+		oplogMessage.Operation = operationType.(string)
+		oplogMessage.Collection = namespace[1]
+		oplogMessage.Source = sender
+		oplogMessage.Timestamp = timestamp
+		oplogMessage.Data = *doc
+		return oplogMessage, nil
+	case "u":
+		id := (*doc)["o2"].(map[string]interface{})["_id"].(primitive.ObjectID)
+
+		*doc, err = GetRecordById(namespace[0], namespace[1], id.Hex())
+		if (*doc) != nil {
+			oplogMessage.ID = id.Hex()
+			delete(*doc, "_id")
+		} else {
+			return oplogMessage, fmt.Errorf("No mongo record found for update operation by id: %s due to error : %s ", id.Hex(), err)
+		}
+
+		oplogMessage.Operation = operationType.(string)
+		oplogMessage.Collection = namespace[1]
+		oplogMessage.Source = sender
+		oplogMessage.Timestamp = timestamp
+		oplogMessage.Data = *doc
+		return oplogMessage, nil
+	default:
+		return oplogMessage, fmt.Errorf("Unsupported operation : %s ", operationType)
+	}
 }

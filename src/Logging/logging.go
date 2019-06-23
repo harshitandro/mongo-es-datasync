@@ -4,6 +4,7 @@ import (
 	runtime "github.com/banzaicloud/logrus-runtime-formatter"
 	log "github.com/sirupsen/logrus"
 	"os"
+	"strings"
 )
 
 func init() {
@@ -20,7 +21,27 @@ func init() {
 
 }
 
-func GetLogger(moduleName, loggerName string) *log.Entry {
-	//return log.WithFields(log.Fields{"module": moduleName, "logger": loggerName})
+func SetLogLevel(level string) {
+	switch strings.ToUpper(level) {
+	case "TRACE":
+		log.SetLevel(log.TraceLevel)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+	case "INFO":
+		log.SetLevel(log.InfoLevel)
+	case "WARN":
+		log.SetLevel(log.WarnLevel)
+	case "ERROR":
+		log.SetLevel(log.ErrorLevel)
+	case "FATAL":
+		log.SetLevel(log.FatalLevel)
+	case "PANIC":
+		log.SetLevel(log.PanicLevel)
+	default:
+		log.SetLevel(log.InfoLevel)
+	}
+}
+
+func GetLogger(loggerName string) *log.Entry {
 	return log.WithFields(log.Fields{"logger": loggerName})
 }

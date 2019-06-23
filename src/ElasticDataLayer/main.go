@@ -5,11 +5,12 @@ import (
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/elastic/go-elasticsearch/v7/esutil"
-	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/ConfigurationModels"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/DatabaseModels/CommonDatabaseModels"
 	"github.com/harshitandro/mongo-es-datasync/src/Utility/HealthCheck"
 	"github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"runtime/debug"
 	"strings"
 )
 
@@ -17,10 +18,18 @@ var logger *logrus.Entry
 var esClient *elasticsearch.Client
 
 func init() {
-	logger = Logging.GetLogger("ElasticDataLayer", "Root")
+	logger = Logging.GetLogger("Root")
 }
 
-func Initialise(config ConfigurationStructs.ApplicationConfiguration) error {
+func recoverPanic(oplogMessage *CommonDatabaseModels.OplogMessage) {
+	if r := recover(); r != nil {
+		HealthCheck.IncrementESRecordsStored(false)
+		logger.WithField("trace", string(debug.Stack())).Errorln("Panic while saving message to ES : ", r, "\n : ", *oplogMessage)
+	}
+}
+
+// TODO: Add custom settings for any user provided index.
+func Initialise(config ConfigurationModels.ApplicationConfiguration) error {
 	var err error
 	var (
 		r map[string]interface{}
@@ -56,46 +65,48 @@ func Initialise(config ConfigurationStructs.ApplicationConfiguration) error {
 	return nil
 }
 
-func PushToElastic(doc map[string]interface{}, operation string, collection string) (int, bool) {
+func PushToElastic(oplogMessage CommonDatabaseModels.OplogMessage) (int, bool) {
+	defer recoverPanic(&oplogMessage)
 	var res *esapi.Response
 	var err error
-	collection = strings.ToLower(collection)
-	objectId, err := primitive.ObjectIDFromHex(doc["mid"].(string))
-	if err != nil {
-		HealthCheck.IncrementESRecordsStored(false)
-		return 000, false
-	}
-
-	switch operation {
+	switch oplogMessage.Operation {
 	case "i":
 		fallthrough
 	case "u":
 		res, err = esClient.Index(
-			collection,                // Index name
-			esutil.NewJSONReader(doc), // Document body
-			esClient.Index.WithDocumentID(doc["mid"].(string)), // Document ID
-			esClient.Index.WithRefresh("true"),                 // Refresh
+			strings.ToLower(oplogMessage.Collection),       // Index name
+			esutil.NewJSONReader(oplogMessage.Data),        // Document body
+			esClient.Index.WithDocumentID(oplogMessage.ID), // Document ID
+			//esClient.Index.WithRefresh("true"),                 // Refresh
 		)
 	case "d":
 		res, err = esClient.Delete(
-			collection,                          // Index name
-			doc["mid"].(string),                 // Document ID
-			esClient.Delete.WithRefresh("true"), // Refresh
+			strings.ToLower(oplogMessage.Collection), // Index name
+			oplogMessage.ID,                          // Document ID
+			//esClient.Delete.WithRefresh("true"), // Refresh
 		)
-
+	default:
+		logger.Errorf("Push to Elasticsearch failed due to unknown operation: %s\n", oplogMessage)
+		HealthCheck.IncrementESRecordsStored(false)
+		return 000, true
 	}
 
-	//defer res.Body.Close()
 	if err != nil {
 		logger.Errorf("Push to Elasticsearch failed : %s\n", err)
 		HealthCheck.IncrementESRecordsStored(false)
 		return res.StatusCode, res.IsError()
 	}
+	if res == nil {
+		logger.Errorf("Push to Elasticsearch failed : Response from ES is nil \n")
+		HealthCheck.IncrementESRecordsStored(false)
+		return 000, true
+	}
 	if res.IsError() {
-		logger.Errorf("[%s] Error indexing document ID %s", res.Status(), objectId.Hex())
+		logger.Errorf("[%s] Error indexing document ID %s : %s", res.Status(), oplogMessage.ID, res.String())
 		HealthCheck.IncrementESRecordsStored(false)
 		return res.StatusCode, res.IsError()
 	} else {
+		defer res.Body.Close()
 		// Deserialize the response into a map.
 		var r map[string]interface{}
 		if err := json.NewDecoder(res.Body).Decode(&r); err != nil {

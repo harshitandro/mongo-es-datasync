@@ -1,10 +1,11 @@
 package HealthCheck
 
 import (
-	"github.com/harshitandro/mongo-es-datasync/src/ConfigurationStructs"
+	"github.com/harshitandro/mongo-es-datasync/src/Configuration"
 	"github.com/harshitandro/mongo-es-datasync/src/Logging"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/ConfigurationModels"
+	"github.com/harshitandro/mongo-es-datasync/src/Models/DatabaseModels/CommonDatabaseModels"
 	"github.com/sirupsen/logrus"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"math"
 	"sync"
 	"time"
@@ -15,15 +16,15 @@ var healthcheck HealthCheck
 var incrementDbRecordsGeneratedMutex sync.Mutex
 var incrementDbRecordsProcessedMutex sync.Mutex
 var incrementesRecordsStoredMutex sync.Mutex
-var dataChannelRef *chan map[string]interface{}
-var lastOpTimestamp *map[string]primitive.Timestamp
-var config *ConfigurationStructs.ApplicationConfiguration
+var dataChannelRef *chan CommonDatabaseModels.OplogMessage
+var lastOpTimestamp *CommonDatabaseModels.LastOperation
+var config *ConfigurationModels.ApplicationConfiguration
 
 func init() {
-	logger = Logging.GetLogger("HealthCheck", "Root")
+	logger = Logging.GetLogger("Root")
 }
 
-func EnableHealthCheck(dataChannel *chan map[string]interface{}, lastOperation *map[string]primitive.Timestamp, applicationConfig *ConfigurationStructs.ApplicationConfiguration) {
+func EnableHealthCheck(dataChannel *chan CommonDatabaseModels.OplogMessage, lastOperation *CommonDatabaseModels.LastOperation, applicationConfig *ConfigurationModels.ApplicationConfiguration) {
 	dataChannelRef = dataChannel
 	lastOpTimestamp = lastOperation
 	config = applicationConfig
@@ -91,8 +92,8 @@ func scheduleDisplayHealthCheck() {
 func updateAndSaveConfig() {
 	var minTime uint32
 	for _, v := range *lastOpTimestamp {
-		minTime = uint32(math.Max(float64(minTime), float64(v.T)))
+		minTime = uint32(math.Min(float64(minTime), float64(v.T)))
 	}
 	(*config).Application.LastTimestampToResume = minTime
-	ConfigurationStructs.SaveApplicationConfig(*config)
+	Configuration.SaveApplicationConfig(*config)
 }
