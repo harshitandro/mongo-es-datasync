@@ -33,6 +33,7 @@ var authData options.Credential
 var enableAuth bool
 var mongoConfig ConfigurationModels.Mongo
 var timestampToResume primitive.Timestamp
+var healthcheckChannel *chan CommonDatabaseModels.LastOperation
 
 var LastOperation CommonDatabaseModels.LastOperation
 
@@ -41,8 +42,9 @@ func init() {
 	shardsAddr = make(map[string]string)
 }
 
-func Initialise(config ConfigurationModels.ApplicationConfiguration, outputChannel *chan CommonDatabaseModels.OplogMessage) error {
+func Initialise(config ConfigurationModels.ApplicationConfiguration, outputChannel *chan CommonDatabaseModels.OplogMessage, healthCheckChannel *chan CommonDatabaseModels.LastOperation) error {
 	var err error
+	healthcheckChannel = healthCheckChannel
 	queryClientWaitGroup = sizedwaitgroup.New(1)
 	dataOutputChannel = outputChannel
 	if dataOutputChannel == nil {
@@ -303,6 +305,10 @@ func dispatcher() {
 
 func UpdateLastOperationDetails(sender string, lastTimestamp primitive.Timestamp) {
 	LastOperation[sender] = lastTimestamp
+	select {
+	case *healthcheckChannel <- LastOperation:
+	default:
+	}
 }
 
 func recoverPanic(doc *map[string]interface{}) {
@@ -329,10 +335,10 @@ func MongoOplogProcessor(doc *map[string]interface{}) (CommonDatabaseModels.Oplo
 
 		//(*doc)["o"].(map[string]interface{})["mid"] = (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID).Hex()
 		objectID := (*doc)["o"].(map[string]interface{})["_id"].(primitive.ObjectID)
-		(*doc)["opTime"] = objectID.Timestamp()
 		oplogMessage.ID = objectID.Hex()
 		delete((*doc)["o"].(map[string]interface{}), "_id")
 		*doc = (*doc)["o"].(map[string]interface{})
+		(*doc)["opTime"] = objectID.Timestamp()
 
 		oplogMessage.Operation = operationType.(string)
 		oplogMessage.Collection = namespace[1]
@@ -342,7 +348,6 @@ func MongoOplogProcessor(doc *map[string]interface{}) (CommonDatabaseModels.Oplo
 		return oplogMessage, nil
 	case "u":
 		id := (*doc)["o2"].(map[string]interface{})["_id"].(primitive.ObjectID)
-
 		*doc, err = GetRecordById(namespace[0], namespace[1], id.Hex())
 		if (*doc) != nil {
 			oplogMessage.ID = id.Hex()
@@ -350,6 +355,7 @@ func MongoOplogProcessor(doc *map[string]interface{}) (CommonDatabaseModels.Oplo
 		} else {
 			return oplogMessage, fmt.Errorf("No mongo record found for update operation by id: %s due to error : %s ", id.Hex(), err)
 		}
+		(*doc)["opTime"] = id.Timestamp()
 
 		oplogMessage.Operation = operationType.(string)
 		oplogMessage.Collection = namespace[1]

@@ -13,6 +13,7 @@ import (
 )
 
 var logger *logrus.Entry
+var healthCheckChannel chan CommonDatabaseModels.LastOperation
 
 func init() {
 	logger = Logging.GetLogger("Root")
@@ -30,8 +31,9 @@ func main() {
 	Logging.SetLogLevel(config.Application.LogLevel)
 
 	bufferChannel := make(chan CommonDatabaseModels.OplogMessage, 5000)
+	healthCheckChannel = make(chan CommonDatabaseModels.LastOperation, 10)
 
-	err = MongoOplogs.Initialise(config, &bufferChannel)
+	err = MongoOplogs.Initialise(config, &bufferChannel, &healthCheckChannel)
 	if err != nil {
 		logger.Errorln("Error while creating Mongo Client : ", err)
 		os.Exit(1)
@@ -43,7 +45,7 @@ func main() {
 		os.Exit(1)
 	}
 	// Start healthcheck after everything
-	HealthCheck.EnableHealthCheck(&bufferChannel, &MongoOplogs.LastOperation, &config)
+	HealthCheck.EnableHealthCheck(&bufferChannel, &healthCheckChannel, &config)
 
 	var oplogNessage CommonDatabaseModels.OplogMessage
 	for {

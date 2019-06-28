@@ -34,7 +34,6 @@ func Initialise(config ConfigurationModels.ApplicationConfiguration) error {
 	var (
 		r map[string]interface{}
 	)
-
 	esConfig := elasticsearch.Config{
 		Addresses: []string{"http://" + config.Elasticsearch.ElasticURL},
 	}

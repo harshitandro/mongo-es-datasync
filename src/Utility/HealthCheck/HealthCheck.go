@@ -17,16 +17,18 @@ var incrementDbRecordsGeneratedMutex sync.Mutex
 var incrementDbRecordsProcessedMutex sync.Mutex
 var incrementesRecordsStoredMutex sync.Mutex
 var dataChannelRef *chan CommonDatabaseModels.OplogMessage
-var lastOpTimestamp *CommonDatabaseModels.LastOperation
+var lastOpTimestamp CommonDatabaseModels.LastOperation
+var lastOpChannel *chan CommonDatabaseModels.LastOperation
+
 var config *ConfigurationModels.ApplicationConfiguration
 
 func init() {
 	logger = Logging.GetLogger("Root")
 }
 
-func EnableHealthCheck(dataChannel *chan CommonDatabaseModels.OplogMessage, lastOperation *CommonDatabaseModels.LastOperation, applicationConfig *ConfigurationModels.ApplicationConfiguration) {
+func EnableHealthCheck(dataChannel *chan CommonDatabaseModels.OplogMessage, lastOperationChannel *chan CommonDatabaseModels.LastOperation, applicationConfig *ConfigurationModels.ApplicationConfiguration) {
 	dataChannelRef = dataChannel
-	lastOpTimestamp = lastOperation
+	lastOpChannel = lastOperationChannel
 	config = applicationConfig
 	logger.Infoln("Starting healthcheck printing in every 10 seconds")
 	go scheduleDisplayHealthCheck()
@@ -82,17 +84,28 @@ func resetHealthCheck() {
 
 func scheduleDisplayHealthCheck() {
 	for {
-		logger.WithField("dbRecordsGeneratePassed", healthcheck.dbRecordsGeneratePassed).WithField("dbRecordsGenerateFailed", healthcheck.dbRecordsGenerateFailed).WithField("dbRecordsProcessPassed", healthcheck.dbRecordsProcessPassed).WithField("dbRecordsProcessFailed", healthcheck.dbRecordsProcessFailed).WithField("esRecordsStorePassed", healthcheck.esRecordsStorePassed).WithField("esRecordsStoreFailed", healthcheck.esRecordsStoreFailed).WithField("pendingRecords", len(*dataChannelRef)).WithField("lastOperationRecord", *lastOpTimestamp).Infof("Healthcheck for last 10 seconds")
+		syncLastOperation()
+		logger.WithField("dbRecordsGeneratePassed", healthcheck.dbRecordsGeneratePassed).WithField("dbRecordsGenerateFailed", healthcheck.dbRecordsGenerateFailed).WithField("dbRecordsProcessPassed", healthcheck.dbRecordsProcessPassed).WithField("dbRecordsProcessFailed", healthcheck.dbRecordsProcessFailed).WithField("esRecordsStorePassed", healthcheck.esRecordsStorePassed).WithField("esRecordsStoreFailed", healthcheck.esRecordsStoreFailed).WithField("pendingRecords", len(*dataChannelRef)).WithField("lastOperationRecord", lastOpTimestamp).Infof("Healthcheck for last 10 seconds")
 		resetHealthCheck()
 		updateAndSaveConfig()
 		time.Sleep(10 * time.Second)
 	}
 }
 
+func syncLastOperation() {
+	for {
+		select {
+		case lastOpTimestamp = <-*lastOpChannel:
+		default:
+			return
+		}
+	}
+}
+
 func updateAndSaveConfig() {
 	var minTime uint32
-	for _, v := range *lastOpTimestamp {
-		minTime = uint32(math.Min(float64(minTime), float64(v.T)))
+	for _, v := range lastOpTimestamp {
+		minTime = uint32(math.Max(float64(minTime), float64(v.T)))
 	}
 	(*config).Application.LastTimestampToResume = minTime
 	Configuration.SaveApplicationConfig(*config)
