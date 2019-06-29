@@ -8,7 +8,7 @@ A utility to tail a Sharded Replicated MongoDb cluster's oplog as datasource & p
 
 The application can be ran as a docker container using the following command.
 
-` docker run -v /PATH/TO/CONFIG/app_conf.json:/app_conf.json  --name Mongo-ES-DataSync --image harshitandro/mongo-es-datasync:TAGNAME`
+` docker run -v /PATH/TO/CONFIG/app_conf.json:/app_conf.json  --name Mongo-ES-DataSync harshitandro/mongo-es-datasync:TAGNAME`
 
  - /PATH/TO/CONFIG/app_conf.json should be the path to application config file in prescribed format given below.
  - Docker image tag can be found at project's [dockerhub repo](https://hub.docker.com/r/harshitandro/mongo-es-datasync) .
@@ -18,7 +18,8 @@ The config file has the following format:
 ```
 {
   "application": {
-    "lastTimestampToResume": 0
+    "lastTimestampToResume": 0,
+    "logLevel": "INFO"
   },
   "elasticsearch": {
     "elasticURL": "127.0.0.1:9200"
@@ -30,9 +31,9 @@ The config file has the following format:
       ],
       "queryRouterAddr": "127.0.0.1:27007",
       "auth": {
-        "username" : "",
+        "username": "",
         "password": "",
-        "source" : ""
+        "source": ""
       }
     }
   }
