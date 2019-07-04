@@ -18,10 +18,10 @@ RUN cd /project \
 
 
 
-FROM golang:1.12.6-alpine3.9
+FROM alpine:3.9
 MAINTAINER harshitandro@gmail.com
 
-COPY --from=builder /go/bin/mongo-es-datasync /go/bin/mongo-es-datasync
+COPY --from=builder /go/bin/mongo-es-datasync /mongo-es-datasync
 COPY --from=builder /project/app_conf.json /etc/mongo-es-sync/app_conf.json
 
-CMD ["/go/bin/mongo-es-datasync"]
+CMD ["/mongo-es-datasync"]
