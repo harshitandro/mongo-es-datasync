@@ -112,6 +112,9 @@ func syncLastOperation() {
 
 func updateAndSaveConfig() {
 	var minTime uint32
+	if lastOpTimestamp == nil {
+		return
+	}
 	for _, v := range lastOpTimestamp {
 		minTime = uint32(math.Max(float64(minTime), float64(v.T)))
 	}
