@@ -7,6 +7,7 @@ import (
 	"github.com/harshitandro/mongo-es-datasync/src/Models/DatabaseModels/CommonDatabaseModels"
 	"github.com/sirupsen/logrus"
 	"math"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -24,6 +25,12 @@ var config *ConfigurationModels.ApplicationConfiguration
 
 func init() {
 	logger = Logging.GetLogger("Root")
+}
+
+func recoverPanic() {
+	if r := recover(); r != nil {
+		logger.WithField("trace", string(debug.Stack())).Errorf("Panic while printing healthcheck : %s", r)
+	}
 }
 
 func EnableHealthCheck(dataChannel *chan CommonDatabaseModels.OplogMessage, lastOperationChannel *chan CommonDatabaseModels.LastOperation, applicationConfig *ConfigurationModels.ApplicationConfiguration) {
@@ -86,6 +93,7 @@ func scheduleDisplayHealthCheck() {
 	for {
 		syncLastOperation()
 		logger.WithField("dbRecordsGeneratePassed", healthcheck.dbRecordsGeneratePassed).WithField("dbRecordsGenerateFailed", healthcheck.dbRecordsGenerateFailed).WithField("dbRecordsProcessPassed", healthcheck.dbRecordsProcessPassed).WithField("dbRecordsProcessFailed", healthcheck.dbRecordsProcessFailed).WithField("esRecordsStorePassed", healthcheck.esRecordsStorePassed).WithField("esRecordsStoreFailed", healthcheck.esRecordsStoreFailed).WithField("pendingRecords", len(*dataChannelRef)).WithField("lastOperationRecord", lastOpTimestamp).Infof("Healthcheck for last 10 seconds")
+		recoverPanic()
 		resetHealthCheck()
 		updateAndSaveConfig()
 		time.Sleep(10 * time.Second)
@@ -104,6 +112,9 @@ func syncLastOperation() {
 
 func updateAndSaveConfig() {
 	var minTime uint32
+	if lastOpTimestamp == nil {
+		return
+	}
 	for _, v := range lastOpTimestamp {
 		minTime = uint32(math.Max(float64(minTime), float64(v.T)))
 	}

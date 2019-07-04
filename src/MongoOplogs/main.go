@@ -44,6 +44,7 @@ func init() {
 
 func Initialise(config ConfigurationModels.ApplicationConfiguration, outputChannel *chan CommonDatabaseModels.OplogMessage, healthCheckChannel *chan CommonDatabaseModels.LastOperation) error {
 	var err error
+
 	healthcheckChannel = healthCheckChannel
 	queryClientWaitGroup = sizedwaitgroup.New(1)
 	dataOutputChannel = outputChannel
@@ -123,6 +124,7 @@ func detectMongoConfig() (isSuccessful bool) {
 		}
 		logger.Infoln("Total replicas found: ", len(shardsAddr))
 		isSuccessful = true
+		*healthcheckChannel <- LastOperation
 	}
 	return
 }
@@ -194,20 +196,22 @@ func GetRecordById(db string, collection string, objectIDHex string) (map[string
 }
 
 func createShardClient(replicasetName string, shardAddr string) (*mongo.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx := context.Background()
 	var client *mongo.Client
 	var err error
 	if enableAuth {
-		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetAuth(authData).SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Second).SetConnectTimeout(15*time.Second))
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetAuth(authData).SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Minute).SetConnectTimeout(15*time.Second))
 	} else {
-		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Second).SetConnectTimeout(15*time.Second))
+		client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://"+shardAddr+"/").SetReadPreference(readpref.SecondaryPreferred()).SetReplicaSet(replicasetName).SetSocketTimeout(15*time.Minute).SetConnectTimeout(15*time.Second))
 	}
-	defer cancel()
 
 	if err != nil {
 		logger.WithField("shardAddr", shardAddr).Errorln("Error while creating Mongo Shard Client : ", err)
 		return nil, err
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Check the connection
 	err = mongoClient.Ping(ctx, nil)
@@ -240,9 +244,10 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 	}
 	logger.WithField("mongoShard", shardAddr).Infoln("Started tailing oplogs from timestamp :", timestampToResumeTail)
 	database := client.Database("local").Collection("oplog.rs")
-	opts := options.FindOptions{}
-
-	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gte", timestampToResumeTail}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(mongoConfig.DbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts.SetCursorType(options.TailableAwait))
+	opts := &options.FindOptions{}
+	opts.SetCursorType(options.TailableAwait)
+	opts.SetNoCursorTimeout(true)
+	cursor, err := database.Find(ctx, bson.D{{"ts", bson.D{{"$gte", timestampToResumeTail}}}, {"fromMigrate", bson.D{{"$exists", false}}}, {"ns", bson.D{{"$regex", "^" + "(" + strings.Join(mongoConfig.DbsToMonitor, "|") + ")" + "\\.([a-zA-Z0-9]+)"}}}}, opts)
 	if err != nil {
 		logger.WithField("mongoShard", shardAddr).Errorln("Error while tailing oplog : ", err)
 		return
