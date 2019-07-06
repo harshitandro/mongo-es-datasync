@@ -63,5 +63,5 @@ Following feature set is currently present:
 
 ### Compatibility
 - Sharded Replicated MongoDb Cluster Version 3.6  & above
-- Elasticsearch Version 6.2 & above
+- Elasticsearch Version 7.x
 
