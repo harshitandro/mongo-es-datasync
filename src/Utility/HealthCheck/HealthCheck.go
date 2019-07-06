@@ -80,6 +80,36 @@ func IncrementESRecordsStored(isPassed bool) {
 	incrementesRecordsStoredMutex.Unlock()
 }
 
+func IncrementDbRecordsGeneratedByCount(isPassed bool, count int32) {
+	incrementDbRecordsGeneratedMutex.Lock()
+	if isPassed {
+		healthcheck.dbRecordsGeneratePassed += count
+	} else {
+		healthcheck.dbRecordsGenerateFailed += count
+	}
+	incrementDbRecordsGeneratedMutex.Unlock()
+}
+
+func IncrementDbRecordsProcessedByCount(isPassed bool, count int32) {
+	incrementDbRecordsProcessedMutex.Lock()
+	if isPassed {
+		healthcheck.dbRecordsProcessPassed += count
+	} else {
+		healthcheck.dbRecordsProcessFailed += count
+	}
+	incrementDbRecordsProcessedMutex.Unlock()
+}
+
+func IncrementESRecordsStoredByCount(isPassed bool, count int32) {
+	incrementesRecordsStoredMutex.Lock()
+	if isPassed {
+		healthcheck.esRecordsStorePassed += count
+	} else {
+		healthcheck.esRecordsStoreFailed += count
+	}
+	incrementesRecordsStoredMutex.Unlock()
+}
+
 func resetHealthCheck() {
 	healthcheck.dbRecordsGeneratePassed = 0
 	healthcheck.dbRecordsGenerateFailed = 0

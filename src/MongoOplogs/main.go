@@ -264,7 +264,7 @@ func tailOplogForShard(shardAddr string, replicasetName string, timestampToResum
 		} else if err == nil {
 			HealthCheck.IncrementDbRecordsGenerated(true)
 			m["sender"] = shardAddr
-			logger.WithField("mongoShard", shardAddr).Debugln("Feeding Cursor data :", m)
+			//logger.WithField("mongoShard", shardAddr).Debugln("Feeding Cursor data :", m)
 			oplogMessage, err = MongoOplogProcessor(&m)
 			if err == nil && !oplogMessage.IsAnyNil() {
 				*dataOutputChannel <- oplogMessage

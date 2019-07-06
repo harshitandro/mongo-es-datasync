@@ -10,7 +10,8 @@ type Application struct {
 	LogLevel              string `json:"logLevel"`
 }
 type Elasticsearch struct {
-	ElasticURL string `json:"elasticURL"`
+	ElasticURL          string `json:"elasticURL"`
+	BatchProcessingSize int    `json:"batchProcessingSize"`
 }
 type Db struct {
 	Mongo Mongo `json:"mongo"`

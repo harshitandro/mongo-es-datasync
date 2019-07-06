@@ -4,7 +4,8 @@
     "logLevel": "INFO"
   },
   "elasticsearch": {
-    "elasticURL": "127.0.0.1:9200"
+    "elasticURL": "127.0.0.1:9200",
+    "batchProcessingSize": 1000
   },
   "db": {
     "mongo": {

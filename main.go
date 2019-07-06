@@ -14,9 +14,11 @@ import (
 
 var logger *logrus.Entry
 var healthCheckChannel chan CommonDatabaseModels.LastOperation
+var batchSize int
 
 func init() {
 	logger = Logging.GetLogger("Root")
+	batchSize = 500
 }
 
 func main() {
@@ -32,6 +34,7 @@ func main() {
 
 	bufferChannel := make(chan CommonDatabaseModels.OplogMessage, 5000)
 	healthCheckChannel = make(chan CommonDatabaseModels.LastOperation, 10)
+	batchSize = config.Elasticsearch.BatchProcessingSize
 
 	err = MongoOplogs.Initialise(config, &bufferChannel, &healthCheckChannel)
 	if err != nil {
@@ -47,26 +50,26 @@ func main() {
 	// Start healthcheck after everything
 	HealthCheck.EnableHealthCheck(&bufferChannel, &healthCheckChannel, &config)
 
+	var oplogNessageList []CommonDatabaseModels.OplogMessage
 	var oplogNessage CommonDatabaseModels.OplogMessage
+	var retryOplogList []CommonDatabaseModels.OplogMessage
+
 	for {
-		oplogNessage = <-bufferChannel
-		if oplogNessage.IsAnyNil() {
-			logger.WithField("source", oplogNessage.Source).Warningln("Unable to transform Oplog Data, error : Incomplete oplog message : ", oplogNessage)
-			continue
-		} else {
-			for i := 0; i < 3; i++ {
-				statusCode, isError := ElasticDataLayer.PushToElastic(oplogNessage)
-				if isError {
-					logger.WithField("oplogTimestamp", oplogNessage.Timestamp).WithField("source", oplogNessage.Source).WithField("operation", oplogNessage.Operation).WithField("collection", oplogNessage.Collection).
-						WithField("docId", oplogNessage.ID).WithField("retry", i).Errorln("Failed to insert document into Elastic search. API Status : ", statusCode)
-				} else {
-					MongoOplogs.UpdateLastOperationDetails(oplogNessage.Source, oplogNessage.Timestamp)
-					break
+		oplogNessageList = append(oplogNessageList, retryOplogList...)
+		currBatchSize := batchSize - len(retryOplogList)
+		retryOplogList = nil
+		if currBatchSize > 0 {
+			for i := 0; i < currBatchSize; i++ {
+				oplogNessage = <-bufferChannel
+				if oplogNessage.IsAnyNil() {
+					logger.WithField("source", oplogNessage.Source).Warningln("Unable to transform Oplog Data, error : Incomplete oplog message : ", oplogNessageList)
+					continue
 				}
+				oplogNessageList = append(oplogNessageList, oplogNessage)
 			}
-
 		}
-
+		retryOplogList = ElasticDataLayer.PushToElastic(oplogNessageList)
+		oplogNessageList = nil
 	}
 
 }

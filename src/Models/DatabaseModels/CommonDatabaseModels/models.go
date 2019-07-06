@@ -16,6 +16,7 @@ type OplogMessage struct {
 	Source     string
 	Timestamp  primitive.Timestamp
 	Data       map[string]interface{}
+	Retry      int
 }
 
 type LastOperation map[string]primitive.Timestamp
