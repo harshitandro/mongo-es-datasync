@@ -68,10 +68,9 @@ func PushToElastic(oplogMessage []CommonDatabaseModels.OplogMessage) []CommonDat
 		var req elastic.BulkableRequest
 		switch op.Operation {
 		case "i":
-			req = elastic.NewBulkIndexRequest().Index(strings.ToLower(op.Collection)).Id(op.ID).Doc(op.Data)
-			requests = append(requests, req)
+			fallthrough
 		case "u":
-			req = elastic.NewBulkUpdateRequest().Index(strings.ToLower(op.Collection)).Id(op.ID).Doc(op.Data)
+			req = elastic.NewBulkIndexRequest().Index(strings.ToLower(op.Collection)).Id(op.ID).Doc(op.Data)
 			requests = append(requests, req)
 		case "d":
 			req = elastic.NewBulkDeleteRequest().Index(strings.ToLower(op.Collection)).Id(op.ID)
