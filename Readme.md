@@ -22,7 +22,8 @@ The config file has the following format:
     "logLevel": "INFO"
   },
   "elasticsearch": {
-    "elasticURL": "127.0.0.1:9200"
+    "elasticURL": "127.0.0.1:9200",
+    "batchProcessingSize": 1000
   },
   "db": {
     "mongo": {
@@ -42,6 +43,7 @@ The config file has the following format:
 
 - `application.lastTimestampToResume` determines the mongoDB oplog timestamp from which the application should resume sync to ES.
 - `elasticsearch.elasticURL` is the elastic URL of your ES cluster.
+- `elasticsearch.batchProcessingSize` is the size of batch of docs to process at once in ES.
 - `db.mongo.dbsToMonitor` is a list of dbs in your mongo which are to be synced to ES.
 - `db.mongo.queryRouterAddr` is the address of your mongoDb's Query Router.
 - [OPTIONAL]`db.mongo.auth` defines the authentication credentials for the given MongoDB.
@@ -54,6 +56,7 @@ Following feature set is currently present:
 - [x] Oplog tailing from Sharded Replicated MongoDb cluster.
 - [x] Auto resume from last operation state in case of application restart.
 - [x] Auto reconnect in case of connectivity failure from either mongoDB or Elasticsearch.
+- [x] Batch Processing for Elasticsearch & MongoDB.
 - [x] Authentication for mongoDB connections.
 - [ ] Authentication for elasticsearch connections.
 

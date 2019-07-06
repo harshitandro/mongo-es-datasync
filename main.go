@@ -34,7 +34,10 @@ func main() {
 
 	bufferChannel := make(chan CommonDatabaseModels.OplogMessage, 5000)
 	healthCheckChannel = make(chan CommonDatabaseModels.LastOperation, 10)
-	batchSize = config.Elasticsearch.BatchProcessingSize
+
+	if config.Elasticsearch.BatchProcessingSize > 0 {
+		batchSize = config.Elasticsearch.BatchProcessingSize
+	}
 
 	err = MongoOplogs.Initialise(config, &bufferChannel, &healthCheckChannel)
 	if err != nil {
